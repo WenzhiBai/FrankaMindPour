@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<library path="lib/libmind_pour_controller">
+  <class name="franka_mind_pour/MindPourController" type="franka_mind_pour::MindPourController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      A joint position controller that holds joints 1-6 and rotates joint 7 clockwise or
+      anti-clockwise at a fixed angular velocity, driven by EEG-decoded commands, within a limited
+      range around the angle it started at, and times one pouring trial.
+    </description>
+  </class>
+</library>

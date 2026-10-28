@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>franka_mind_pour</name>
+  <version>0.1.0</version>
+  <description>franka_mind_pour rotates the last joint of a Franka Research 3 clockwise or anti-clockwise, driven by EEG-decoded commands streamed over UDP from a separate Windows PC, to perform a pouring action.</description>
+  <maintainer email="tank.wenzhi.bai@gmail.com">Wenzhi Bai</maintainer>
+  <license>MIT</license>
+
+  <author>Wenzhi Bai</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_generation</build_depend>
+
+  <depend>controller_interface</depend>
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>realtime_tools</depend>
+  <depend>roscpp</depend>
+  <depend>std_msgs</depend>
+
+  <exec_depend>message_runtime</exec_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>rosbag</exec_depend>
+  <exec_depend>actionlib</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+
+  <exec_depend>franka_control</exec_depend>
+  <exec_depend>franka_description</exec_depend>
+
+  <export>
+    <controller_interface plugin="${prefix}/franka_controllers_plugin.xml" />
+  </export>
+</package>

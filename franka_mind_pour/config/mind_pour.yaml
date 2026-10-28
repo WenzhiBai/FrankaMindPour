@@ -1,0 +1,77 @@
+# All parameters of the mind-pour experiment. Loaded by mind_pour.launch with
+# subst_value, so $(arg arm_id) is filled in from the launch file.
+#
+# Angles exposed to the experimenter are in degrees (suffix _deg); joint
+# positions are in radians, as franka_ros expects them.
+
+# --- Session start --------------------------------------------------------
+# session_manager.py drives the arm here through franka's
+# position_joint_trajectory_controller before every session, exactly like
+# franka_example_controllers/move_to_start.py.
+mind_pour_session:
+  joint_pose:
+    $(arg arm_id)_joint1: 0.0
+    $(arg arm_id)_joint2: -0.785398163397
+    $(arg arm_id)_joint3: 0.0
+    $(arg arm_id)_joint4: -2.35619449019
+    $(arg arm_id)_joint5: 0.0
+    $(arg arm_id)_joint6: 1.57079632679
+    $(arg arm_id)_joint7: 0.785398163397
+  max_dq: 0.2                   # [rad/s] speed of the furthest joint on the move to joint_pose
+  controller_wait_timeout: 30.0 # [s] give up if the controllers have not loaded by then
+  post_trial_record_sec: 1.0    # [s] keep recording after the trial ends, then shut down
+
+# --- UDP link from the Windows EEG PC ----------------------------------------
+# Datagram format (ASCII): "<seq>,<command>,<sender_time>\n", command in
+# {-1 anti-clockwise, 0 none, 1 clockwise}. See scripts/fmp_udp_sender.py.
+mind_pour_udp_bridge:
+  bind_address: 0.0.0.0         # listen on every interface; 192.168.50.2 = eno1 only
+  port: 5005
+  command_topic: /mind_pour/command
+  # A sequence number this far below the last one is taken as a restarted
+  # sender rather than a late packet.
+  seq_restart_gap: 100
+
+# --- Joint 7 controller ----------------------------------------------------------
+mind_pour_controller:
+  type: franka_mind_pour/MindPourController
+  arm_id: $(arg arm_id)
+  joint_names:
+    - $(arg arm_id)_joint1
+    - $(arg arm_id)_joint2
+    - $(arg arm_id)_joint3
+    - $(arg arm_id)_joint4
+    - $(arg arm_id)_joint5
+    - $(arg arm_id)_joint6
+    - $(arg arm_id)_joint7
+  command_topic: /mind_pour/command
+
+  angular_velocity_deg: 30.0    # [deg/s] joint 7 speed while a rotate command is active
+  # [deg/s^2] ramp to and from that speed. The FR3 rejects velocity steps, so
+  # every speed change, including stopping, goes through this limit.
+  max_acceleration_deg: 200.0
+  # [s] how long one command stays active after it was received, unless the
+  # next command replaces it first. Commands arrive at 50 Hz (20 ms), so this
+  # bridges the gap between packets plus some jitter.
+  command_hold_duration: 0.03
+  # [deg] joint 7 is kept within +-angle_limit_deg of where it was when the
+  # controller started (the session start pose). It decelerates so it comes to
+  # rest on the limit rather than hitting it.
+  angle_limit_deg: 90.0
+  # [rad] absolute joint 7 bounds, a safety margin inside the hardware limits
+  # (FR3 +-3.0159, Panda +-2.8973). The range above is cut to these.
+  joint7_min: -2.8
+  joint7_max: 2.8
+  # Which way joint 7 turns for a CLOCKWISE command: 1 = positive joint 7
+  # direction, which is clockwise seen from above the flange looking down the
+  # tool when the tool points down. -1 flips it. Verify on the robot.
+  clockwise_sign: 1
+
+  # Trial timer: starts at the first rotate command acted on and stops once
+  # joint 7 has been at least min_excursion_deg away from its start angle and
+  # is back within return_tolerance_deg of it, with no command active and the
+  # joint commanded to rest. After that the controller ignores commands.
+  min_excursion_deg: 10.0
+  return_tolerance_deg: 2.0
+
+  state_rate: 100.0             # [Hz] PourState publish rate (<= 1000, the control rate)

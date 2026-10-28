@@ -1,0 +1,65 @@
+<?xml version="1.0" ?>
+<!--
+  Runs one mind-pour session.
+
+  Brings up franka_control, franka's position_joint_trajectory_controller
+  (running) and mind_pour_controller (loaded, stopped), the UDP bridge from the
+  Windows EEG PC, the session manager and the rosbag recorder.
+
+  THE ARM MOVES ON ITS OWN: the session manager first drives it to the start
+  pose in config/mind_pour.yaml, then hands over to mind_pour_controller, which
+  rotates joint 7 on the EEG commands. When joint 7 has come back to its start
+  angle the trial time is appended to results_file and everything shuts down.
+-->
+<launch>
+  <arg name="robot" default="fr3" doc="choose your robot. Possible values: [panda, fr3]"/>
+  <arg name="load_gripper" default="false"/>
+  <arg name="robot_ip" default="192.168.1.11"/>
+  <arg name="arm_id" default="$(arg robot)"/>
+  <arg name="participant" doc="Participant id, written into the results file and the bag name."/>
+  <arg name="session" doc="Session number, written into the results file and the bag name."/>
+  <arg name="record" default="true"
+       doc="Record the received commands and the controller state into a rosbag."/>
+  <arg name="record_dir" default="$(env HOME)/fmp_logs"
+       doc="Where the bags go. Created if it does not exist."/>
+  <arg name="results_file" default="$(arg record_dir)/results.csv"
+       doc="CSV that one row per completed session is appended to."/>
+
+  <!-- ROSCONSOLE env must precede the franka_control include so the
+       controller_manager / MindPourController plugin inherits the config. -->
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${time}] [${function}:${line}]: ${message}"/>
+  <env name="ROSCONSOLE_STDOUT_LINE_BUFFERED" value="1"/>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find franka_mind_pour)/config/rosconsole.config"/>
+
+  <include file="$(find franka_control)/launch/franka_control.launch" pass_all_args="true">
+    <arg name="robot" value="$(arg robot)"/>
+    <arg name="load_gripper" value="$(arg load_gripper)"/>
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="arm_id"   value="$(arg arm_id)"/>
+  </include>
+
+  <rosparam command="load" file="$(find franka_mind_pour)/config/mind_pour.yaml" subst_value="true"/>
+  <param name="/mind_pour_session/participant" type="str" value="$(arg participant)"/>
+  <param name="/mind_pour_session/session" type="str" value="$(arg session)"/>
+  <param name="/mind_pour_session/results_file" type="str" value="$(arg results_file)"/>
+
+  <!-- position_joint_trajectory_controller comes from franka_control's
+       default_controllers.yaml and does the move to the start pose. -->
+  <node name="trajectory_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+        output="log" args="position_joint_trajectory_controller"/>
+  <node name="pour_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+        output="log" args="--stopped mind_pour_controller"/>
+
+  <node name="mind_pour_udp_bridge" pkg="franka_mind_pour" type="udp_bridge.py" output="screen"
+        required="true"/>
+
+  <!-- Its exit ends the session: required, so roslaunch then shuts everything
+       down and rosbag closes the bag. -->
+  <node name="mind_pour_session" pkg="franka_mind_pour" type="session_manager.py" output="screen"
+        required="true"/>
+
+  <node if="$(arg record)" name="mind_pour_recorder" pkg="franka_mind_pour" type="record_bag.sh"
+        args="$(arg record_dir) mind_pour_$(arg participant)_s$(arg session)
+              /mind_pour/command /mind_pour_controller/pour_state"
+        output="screen" required="false"/>
+</launch>
