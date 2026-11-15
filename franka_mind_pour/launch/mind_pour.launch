@@ -18,6 +18,9 @@
   <arg name="arm_id" default="$(arg robot)"/>
   <arg name="participant" doc="Participant id, written into the results file and the bag name."/>
   <arg name="session" doc="Session number, written into the results file and the bag name."/>
+  <arg name="stage" default="full"
+       doc="full: the whole session. move: only the move to the start pose. rotate: skip that
+            move and rotate joint 7 from where the arm is. Only full writes to results_file."/>
   <arg name="record" default="true"
        doc="Record the received commands and the controller state into a rosbag."/>
   <arg name="record_dir" default="$(env HOME)/fmp_logs"
@@ -42,6 +45,7 @@
   <param name="/mind_pour_session/participant" type="str" value="$(arg participant)"/>
   <param name="/mind_pour_session/session" type="str" value="$(arg session)"/>
   <param name="/mind_pour_session/results_file" type="str" value="$(arg results_file)"/>
+  <param name="/mind_pour_session/stage" type="str" value="$(arg stage)"/>
 
   <!-- position_joint_trajectory_controller comes from franka_control's
        default_controllers.yaml and does the move to the start pose. -->

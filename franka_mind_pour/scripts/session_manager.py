@@ -9,6 +9,9 @@
 3. When mind_pour_controller reports DONE, appends one row to ~results_file and
    exits. mind_pour.launch marks this node required, so that shuts the whole
    session down (and closes the bag).
+
+~stage runs one step on its own for debugging: 'move' exits after step 1, and
+'rotate' skips step 1 and does not write to ~results_file.
 """
 
 import csv
@@ -30,6 +33,7 @@ from franka_mind_pour.msg import PourState
 
 TRAJECTORY_CONTROLLER = 'position_joint_trajectory_controller'
 POUR_CONTROLLER = 'mind_pour_controller'
+STAGES = ('full', 'move', 'rotate')
 
 RESULT_FIELDS = ['date_time', 'participant', 'session', 'trial_time_sec',
                  'max_clockwise_deg', 'max_anti_clockwise_deg']
@@ -139,14 +143,24 @@ def main():
     participant = rospy.get_param('~participant')
     session = rospy.get_param('~session')
     results_file = os.path.expanduser(rospy.get_param('~results_file'))
+    stage = rospy.get_param('~stage', 'full')
+    if stage not in STAGES:
+        rospy.logerr('session_manager: ~stage must be one of %s, got %r', STAGES, stage)
+        return 1
 
-    rospy.loginfo('session_manager: participant %s, session %s', participant, session)
+    rospy.loginfo('session_manager: participant %s, session %s, stage %s', participant, session,
+                  stage)
     if not wait_for_controllers(controller_wait_timeout):
         rospy.logerr('session_manager: controllers did not come up within %.0f s',
                      controller_wait_timeout)
         return 1
-    if not move_to_start(pose, max_dq):
+    if stage == 'rotate':
+        rospy.logwarn('session_manager: stage rotate, skipping the move to the start pose')
+    elif not move_to_start(pose, max_dq):
         return 1
+    if stage == 'move':
+        rospy.loginfo('session_manager: stage move, start pose reached, shutting down')
+        return 0
 
     monitor = TrialMonitor()
     if not switch_to_pour_controller():
@@ -162,10 +176,12 @@ def main():
                       'in %s', results_file)
         return 1
 
-    append_result(results_file, participant, session, monitor)
+    if stage == 'full':
+        append_result(results_file, participant, session, monitor)
     rospy.loginfo('session_manager: trial time %.3f s (max clockwise %.1f deg, max '
-                  'anti-clockwise %.1f deg) appended to %s', monitor.trial_time,
+                  'anti-clockwise %.1f deg) %s %s', monitor.trial_time,
                   math.degrees(monitor.max_clockwise), math.degrees(monitor.max_anti_clockwise),
+                  'appended to' if stage == 'full' else 'NOT written (debug stage) to',
                   results_file)
     # Let the bag catch the final samples before the launch file shuts down.
     rospy.sleep(post_trial_record_sec)

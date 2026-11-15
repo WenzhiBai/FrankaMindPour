@@ -86,10 +86,41 @@ Like the sibling projects, this repo is **not** built in place. `compile_package
 ./scripts/compile_package.sh                               # from the repo root
 ./scripts/run_session.sh participant:=P01 session:=1       # one session
 ./scripts/run_session.sh --help                            # all accepted keys
+./scripts/run_session.sh stage:=udp                        # debug one step, see below
 ```
 
 Before running: release the FR3 brakes and put the robot into FCI/execution mode in Desk. **The arm
 moves on its own** to the start pose at the beginning of every session, so keep its path clear.
+
+## Debugging one step at a time
+
+`stage:=` runs one step of a session on its own. `participant` and `session` are optional here
+(they default to `debug` and `0`), and **only a `full` session writes a row to `results.csv`**.
+Work through the steps in this order:
+
+| Step | Command | Robot | What to look for |
+| --- | --- | --- | --- |
+| 1. Windows link | `./scripts/run_session.sh stage:=udp` | not used | `receiving from 192.168.50.1:<port>` when the first packet arrives, then `average rate: ~50` once per second. `no new messages` means nothing is arriving: check the cable, the IP addresses, the port and `ufw` (see Network setup). Ctrl+C prints the published / lost / late / malformed counts. |
+| 2. Start pose | `./scripts/run_session.sh stage:=move` | **moves** | The arm goes to `joint_pose` and everything exits. |
+| 3. Rotation | `./scripts/run_session.sh stage:=rotate` | **joint 7 moves** | No move to the start pose: the arm holds where it is, and joint 7 turns on commands. The controller prints state, command, angle and velocity every 0.5 s. It ends when joint 7 is back at its start angle after an excursion, or on Ctrl+C. |
+| 4. Everything | `./scripts/run_session.sh participant:=P01 session:=1` | **moves** | A real session. |
+
+Steps 1, 3 and 4 take commands from the Windows PC or from a simulated sender on this PC, started
+in a second terminal:
+
+```bash
+python3 scripts/fmp_udp_sender.py --host 127.0.0.1 --pattern=1:1     # 1 s clockwise, about 30 deg
+python3 scripts/fmp_udp_sender.py --host 127.0.0.1 --pattern=-1:1    # 1 s anti-clockwise
+python3 scripts/fmp_udp_sender.py --host 127.0.0.1                   # 2 s there, 2 s back
+```
+
+Write a pattern that starts with `-1` as `--pattern=-1:1`; with a space, argparse takes it for an
+option. In step 3, sending `1:1` and then `-1:1` brings joint 7 back to its start angle, which ends
+the trial. This is also the step to check `clockwise_sign` on.
+
+To see the raw messages in any step: `rostopic echo /mind_pour/command` and
+`rostopic echo /mind_pour_controller/pour_state`. Steps 2 and 3 record a bag like a session does,
+unless `record:=false`.
 
 ## Outputs
 
@@ -108,7 +139,7 @@ Everything is in `franka_mind_pour/config/mind_pour.yaml`, with units and commen
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `mind_pour_session/joint_pose` | franka's `start_pose.yaml` | session start pose [rad] |
+| `mind_pour_session/joint_pose` | 0, 80, 0, −60, 0, 230, 45 deg | session start pose [rad]: flange plane vertical, facing forward |
 | `mind_pour_session/max_dq` | 0.2 rad/s | speed of the move to the start pose |
 | `mind_pour_udp_bridge/port` | 5005 | UDP port |
 | `angular_velocity_deg` | 30 deg/s | joint 7 speed while rotating |
@@ -120,8 +151,8 @@ Everything is in `franka_mind_pour/config/mind_pour.yaml`, with units and commen
 | `return_tolerance_deg` | 2 deg | how close to the start counts as returned |
 
 **Direction.** With `clockwise_sign: 1`, a clockwise command turns joint 7 in its positive
-direction. That is clockwise when seen from above, looking down the tool, while the tool points
-down as in the default start pose. Check this on the robot before the first experiment, and flip
+direction. That is clockwise when seen from behind the flange, looking along the tool axis, which
+points forward in the start pose. Check this on the robot before the first experiment, and flip
 `clockwise_sign` if needed.
 
 ## Layout
@@ -135,6 +166,7 @@ franka_mind_pour/
   include/franka_mind_pour/mind_pour_controller.h
   src/mind_pour_controller.cpp         joint 7 controller + trial timer (1 kHz)
   launch/mind_pour.launch              one session
+  launch/debug_udp.launch              stage:=udp, the bridge without the robot
   msg/PourCommand.msg                  one received EEG command
   msg/PourState.msg                    one controller state sample
   scripts/udp_bridge.py                UDP -> /mind_pour/command
@@ -150,4 +182,5 @@ scripts/
 
 The build is clean. The UDP path (sender → bridge → topic) has been tested on localhost. The
 controller logic has been checked against a fake position interface: the ramp, the ±90° limit, the
-hold, the timer, and the minimum excursion. **Nothing has been run on the real robot yet.**
+hold, the timer, and the minimum excursion. `stage:=udp` has been run on localhost. **Nothing has
+been run on the real robot yet**, `stage:=move` and `stage:=rotate` included.

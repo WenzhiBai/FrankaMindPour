@@ -14,20 +14,44 @@ network setup and the design choices.
 
 This repo is **not** built in place. `compile_package.sh` wipes `~/workspace/catkin_ws_fmp/`, copies
 `franka_mind_pour/` into it and `catkin build`s there against `catkin_ws_franka`. Edits here do not
-reach the running binary until you re-run the compile script.
+reach the running binary until you re-run the compile script. This applies to the yaml, the launch
+file and the Python nodes as well as the C++, because `roslaunch` resolves all of them from the copy.
 
 ```bash
 ./scripts/compile_package.sh                           # from the repo root
 ./scripts/run_session.sh participant:=P01 session:=1   # one session; unknown keys are rejected
 ```
 
-There is no test suite and no CI. Verification is: a clean build; the UDP path tested on localhost
-with `scripts/fmp_udp_sender.py --host 127.0.0.1`; and then a real-robot session. Treat any change to
-`update()` as unverified until it has run on the robot, and say so.
+`run_session.sh stage:=udp|move|rotate` runs one step on its own for debugging (README, "Debugging
+one step at a time"). `udp` launches `debug_udp.launch` and never touches the robot. `move` and
+`rotate` go through `mind_pour.launch` and are branches on `~stage` in `session_manager.py`. Only
+`stage:=full` appends to the results CSV.
+
+`compile_package.sh` takes `ROOT_DIR` from `pwd`, so it must be run from the repo root. It also
+appends a `source` line for `catkin_ws_fmp` to `~/.bashrc` and `~/.zshrc` if it is missing. The
+`build/` directory at the repo root is the VS Code CMake extension's Debug configure of
+`franka_mind_pour/` (gitignored, used for `compile_commands.json`). It is not what runs.
+
+There is no test suite and no CI. Verification is: a clean build; the UDP path tested on localhost;
+and then a real-robot session. Treat any change to `update()` as unverified until it has run on the
+robot, and say so. The fake position interface that the README's Status section mentions is not in
+the repo.
+
+```bash
+# UDP path without the robot, one terminal each
+./scripts/run_session.sh stage:=udp                   # bridge + `rostopic hz`, safe to run any time
+python3 scripts/fmp_udp_sender.py --host 127.0.0.1    # default pattern: 2 s clockwise, 2 s back
+```
+
+Do not run `stage:=move`, `stage:=rotate` or a full session yourself: they move the arm.
 
 Code style: Google C++, `IndentWidth: 2`, `ColumnLimit: 100` (`.clang-format`). C++17.
 
 ## Architecture
+
+There are two `scripts/` directories. The one at the repo root holds the operator tools
+(`compile_package.sh`, `run_session.sh`, and `fmp_udp_sender.py`, which is copied to the Windows
+PC). The paths below are inside the package, `franka_mind_pour/`.
 
 - `scripts/udp_bridge.py`: parses `"<seq>,<command>,<sender_time>\n"` datagrams, drops late
   packets (by `seq`) and malformed ones, and publishes `PourCommand` on `/mind_pour/command`, stamped
@@ -38,9 +62,25 @@ Code style: Google C++, `IndentWidth: 2`, `ColumnLimit: 100` (`.clang-format`). 
 - `scripts/session_manager.py`: moves to the start pose through `position_joint_trajectory_controller`
   (a port of `move_to_start.py`), switches STRICT to `mind_pour_controller`, and waits for
   `PourState.STATE_DONE`. It then appends to the results CSV and exits. It is `required` in the
-  launch file, so its exit ends the session.
+  launch file, so its exit ends the session. A session stopped before `DONE` (Ctrl-C included)
+  writes no CSV row.
+- `launch/mind_pour.launch`: includes `franka_control.launch`, loads the yaml with `subst_value`
+  (so `$(arg arm_id)` works inside it), and spawns `position_joint_trajectory_controller` running
+  and `mind_pour_controller` `--stopped`. `udp_bridge.py` is also `required`. The rosbag recorder
+  is not.
+- The controller plugin runs inside the `franka_control` process, so its log lines appear under that
+  node. `config/rosconsole.config` sets every logger to WARN except `ros.franka_mind_pour` (INFO).
 
 ## Conventions
+
+- **A new launch argument has to be added in two places:** `launch/mind_pour.launch` and the
+  whitelist in the root `scripts/run_session.sh` (default, usage text, `case` entry, and the
+  `roslaunch` call). `run_session.sh` rejects any key it does not know.
+- **Defaults are repeated.** A controller default appears in the yaml, in the header's member
+  initialiser, and in the README's parameter table. The robot IP `192.168.1.11` is in both
+  `run_session.sh` and the launch file. Change them together.
+- **A new message or Python node needs a `CMakeLists.txt` entry** (`add_message_files`,
+  `catkin_install_python`). New `.cpp` files under `src/` are picked up by the glob.
 
 - **All parameters live in `config/mind_pour.yaml`.** Nothing is hard-coded. Adding a controller
   parameter means: a yaml entry (with a comment and units) → a member and default in the header →

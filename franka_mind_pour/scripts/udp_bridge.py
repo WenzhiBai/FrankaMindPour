@@ -67,6 +67,8 @@ def main():
         if address != sender:
             rospy.loginfo('udp_bridge: receiving from %s:%d', address[0], address[1])
             sender = address
+            # A new socket is a restarted sender, whose seq starts again.
+            last_seq = None
 
         if last_seq is not None:
             if seq <= last_seq:

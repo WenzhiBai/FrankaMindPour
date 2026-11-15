@@ -1,0 +1,24 @@
+<?xml version="1.0" ?>
+<!--
+  Debug step "udp": checks the link from the Windows EEG PC without the robot.
+
+  Runs only the UDP bridge, with the same parameters as a session, and prints
+  the rate of /mind_pour/command once per second. Nothing here talks to the
+  robot. The bridge logs the sender's address when the first packet arrives and
+  its packet counts (published, lost, late, malformed) on Ctrl+C.
+
+  To see the commands themselves: rostopic echo /mind_pour/command
+-->
+<launch>
+  <arg name="arm_id" default="fr3"/>
+
+  <!-- rostopic's output is block-buffered under roslaunch otherwise. -->
+  <env name="PYTHONUNBUFFERED" value="1"/>
+
+  <rosparam command="load" file="$(find franka_mind_pour)/config/mind_pour.yaml" subst_value="true"/>
+
+  <node name="mind_pour_udp_bridge" pkg="franka_mind_pour" type="udp_bridge.py" output="screen"
+        required="true"/>
+  <node name="mind_pour_command_rate" pkg="rostopic" type="rostopic" output="screen"
+        args="hz /mind_pour/command"/>
+</launch>

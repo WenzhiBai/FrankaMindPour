@@ -22,6 +22,7 @@
   <exec_depend>message_runtime</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>rosbag</exec_depend>
+  <exec_depend>rostopic</exec_depend>
   <exec_depend>actionlib</exec_depend>
   <exec_depend>control_msgs</exec_depend>
   <exec_depend>controller_manager</exec_depend>
